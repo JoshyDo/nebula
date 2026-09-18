@@ -32,8 +32,7 @@ internal class DFRelayComponent_Patch
         var atField = factory?.planetATField;
         if (atField != null && atField.energy > 0 && atField.generatorCount > 0)
         {
-            if (atField.generatorCount >= 7 ||
-                atField.globeDefenceCoveryRatio >= 0.95 ||
+            if (atField.globeDefenceCoveryRatio >= 0.95 ||
                 atField.globeFillRatio >= 0.95 ||
                 atField.isSpherical)
             {
@@ -63,8 +62,7 @@ internal class DFRelayComponent_Patch
             var atField = planet?.factory?.planetATField;
             if (atField != null && atField.energy > 0 && atField.generatorCount > 0)
             {
-                if (atField.generatorCount >= 7 ||
-                    atField.globeDefenceCoveryRatio >= 0.95 ||
+                if (atField.globeDefenceCoveryRatio >= 0.95 ||
                     atField.globeFillRatio >= 0.95 ||
                     atField.isSpherical)
                 {

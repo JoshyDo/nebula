@@ -24,9 +24,8 @@ internal class PlanetATField_Patch
         // If shields have energy and working generators
         if (__instance.energy > 0 && __instance.generatorCount > 0)
         {
-            // 1. Full globe coverage check (7+ generators, or 95%+ coverage ratio, or isSpherical)
-            if (__instance.generatorCount >= 7 ||
-                __instance.globeDefenceCoveryRatio >= 0.95 ||
+            // 1. Full globe coverage check (95%+ coverage ratio or isSpherical)
+            if (__instance.globeDefenceCoveryRatio >= 0.95 ||
                 __instance.globeFillRatio >= 0.95 ||
                 __instance.isSpherical)
             {
