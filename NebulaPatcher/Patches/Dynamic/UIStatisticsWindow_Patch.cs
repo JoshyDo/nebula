@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using System.Diagnostics.CodeAnalysis;
 using HarmonyLib;
@@ -59,7 +59,7 @@ internal class UIStatisticsWindow_Patch
     {
         if (!Multiplayer.IsActive || Multiplayer.Session.LocalPlayer.IsHost) return;
 
-        if (__instance.isStatisticsTab && __instance.lastAstroFilter != __instance.astroFilter)
+        if ((__instance.isStatisticsTab || __instance.isPowerTab) && __instance.lastAstroFilter != __instance.astroFilter)
         {
             if (__instance.astroFilter != 0)
             {
