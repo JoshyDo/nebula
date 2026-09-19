@@ -645,6 +645,7 @@ public class GameStatesManager : IDisposable
             {
                 data.galacticDigital.Import(reader.BinaryReader);
             }
+            data.galacticDigital.Arragement();
             galacticDigitalBinaryData = null;
         }
 

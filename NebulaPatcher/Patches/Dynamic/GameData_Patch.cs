@@ -223,6 +223,13 @@ internal class GameData_Patch
             // Same pattern as galacticTransport.Arragement() below (and vanilla GameData.Import line 936).
             GameMain.data.galacticDigital?.Arragement();
 
+            if (UIRoot.instance?.uiGame?.markerDetail != null && planet != null && planet.factory != null)
+            {
+                UIRoot.instance.uiGame.markerDetail.inspectPlanet = null;
+                UIRoot.instance.uiGame.markerDetail.SetInspectPlanet(planet);
+                UIRoot.instance.uiGame.markerDetail.UpdateNodes();
+            }
+
             try
             {
                 NebulaModAPI.OnPlanetLoadFinished?.Invoke(planet.id);
