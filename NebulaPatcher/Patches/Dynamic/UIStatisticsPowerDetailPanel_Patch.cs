@@ -16,8 +16,32 @@ namespace NebulaPatcher.Patches.Dynamic;
 [HarmonyPatch]
 internal class UIStatisticsPowerDetailPanel_Patch
 {
-    private static readonly Color CyanColor = new(0.2f, 0.75f, 1.0f, 1f);
-    private static readonly Color OrangeColor = new(1.0f, 0.65f, 0.2f, 1f);
+    private static readonly Color CyanColor = new(0.00f, 0.85f, 1.00f, 1f);
+    private static readonly Color OrangeColor = new(1.00f, 0.60f, 0.05f, 1f);
+
+    private static readonly Color[] CyanPalette = new Color[]
+    {
+        new(0.00f, 0.85f, 1.00f, 1f), // Bright Cyan
+        new(0.12f, 0.72f, 0.95f, 1f), // Sky Blue
+        new(0.25f, 0.88f, 0.95f, 1f), // Light Aqua
+        new(0.05f, 0.60f, 0.85f, 1f), // Deep Cyan
+        new(0.35f, 0.92f, 1.00f, 1f), // Vivid Azure
+        new(0.00f, 0.78f, 0.88f, 1f), // Teal Cyan
+        new(0.20f, 0.65f, 0.92f, 1f), // Ocean Blue
+        new(0.40f, 0.80f, 1.00f, 1f), // Ice Blue
+    };
+
+    private static readonly Color[] OrangePalette = new Color[]
+    {
+        new(1.00f, 0.60f, 0.05f, 1f), // Warm Amber Orange
+        new(1.00f, 0.45f, 0.15f, 1f), // Deep Coral Orange
+        new(1.00f, 0.72f, 0.20f, 1f), // Bright Golden Orange
+        new(0.95f, 0.35f, 0.10f, 1f), // Fiery Orange
+        new(1.00f, 0.80f, 0.35f, 1f), // Light Amber
+        new(0.90f, 0.40f, 0.05f, 1f), // Burnt Orange
+        new(1.00f, 0.55f, 0.25f, 1f), // Warm Coral
+        new(0.85f, 0.30f, 0.00f, 1f), // Dark Rust Orange
+    };
 
     private struct SliceInfo
     {
@@ -28,6 +52,25 @@ internal class UIStatisticsPowerDetailPanel_Patch
         public double value;
         public double fill;
         public double offset;
+    }
+
+    [HarmonyPrefix]
+    [HarmonyPatch(typeof(UISectorGraph), nameof(UISectorGraph._OnUpdate))]
+    public static void UISectorGraph_OnUpdate_Prefix(UISectorGraph __instance)
+    {
+        if (!Multiplayer.IsActive || Multiplayer.Session.LocalPlayer.IsHost || __instance == null) return;
+        SanitizeSectorGraphState(__instance);
+    }
+
+    [HarmonyFinalizer]
+    [HarmonyPatch(typeof(UISectorGraph), nameof(UISectorGraph._OnUpdate))]
+    public static Exception UISectorGraph_OnUpdate_Finalizer(Exception __exception)
+    {
+        if (__exception != null && Multiplayer.IsActive && !Multiplayer.Session.LocalPlayer.IsHost)
+        {
+            return null; // Suppress client-side exception so UI update loop never crashes
+        }
+        return __exception;
     }
 
     [HarmonyFinalizer]
@@ -209,7 +252,7 @@ internal class UIStatisticsPowerDetailPanel_Patch
                             {
                                 isOrange = true,
                                 level = 1,
-                                parent = 0,
+                                parent = -1,
                                 name = name,
                                 value = entry.power,
                                 fill = sliceFill,
@@ -319,44 +362,125 @@ internal class UIStatisticsPowerDetailPanel_Patch
         return list;
     }
 
-    private static int GetColorIndex(UISectorGraph graph, bool wantOrange)
+    private static void SanitizeSectorGraphState(UISectorGraph graph)
     {
-        if (graph.colors == null || graph.colors.Length == 0) return 0;
-        if (graph.colors.Length == 1) return 0;
+        if (graph == null) return;
 
-        for (var i = 0; i < graph.colors.Length; i++)
+        // 1. Ensure colors has ample capacity (at least 32 distinct colors)
+        if (graph.colors == null || graph.colors.Length < 32)
         {
-            var isOrange = graph.colors[i].r > graph.colors[i].b;
-            if (isOrange == wantOrange)
+            var oldColors = graph.colors;
+            graph.colors = new Color[32];
+            for (var i = 0; i < 32; i++)
             {
-                return i;
+                if (oldColors != null && i < oldColors.Length)
+                    graph.colors[i] = oldColors[i];
+                else
+                    graph.colors[i] = i < 16 ? CyanPalette[i % CyanPalette.Length] : OrangePalette[i % OrangePalette.Length];
             }
         }
 
-        return wantOrange ? Math.Min(1, graph.colors.Length - 1) : 0;
+        // 2. Ensure levelRanges has at least 8 elements (supports up to 4 levels)
+        if (graph.levelRanges == null || graph.levelRanges.Length < 8)
+        {
+            var oldRanges = graph.levelRanges;
+            var r0 = (oldRanges != null && oldRanges.Length > 0) ? oldRanges[0] : 60f;
+            var r1 = (oldRanges != null && oldRanges.Length > 1) ? oldRanges[1] : 90f;
+            graph.levelRanges = new float[8]
+            {
+                r0, r1,                   // Level 0: Outer ring
+                r0 * 0.72f, r1 * 0.82f,   // Level 1: Inner ring
+                r0 * 0.45f, r1 * 0.55f,   // Level 2
+                r0 * 0.20f, r1 * 0.30f    // Level 3
+            };
+        }
+
+        // 3. Ensure tmp_sum has at least 8 elements
+        if (graph.tmp_sum == null || graph.tmp_sum.Length < 8)
+        {
+            graph.tmp_sum = new double[8];
+        }
+
+        // 4. Ensure levelGroups has at least 4 elements
+        if (graph.levelGroups == null || graph.levelGroups.Length < 4)
+        {
+            var newGroups = new RectTransform[4];
+            if (graph.levelGroups != null)
+            {
+                for (var i = 0; i < graph.levelGroups.Length && i < 4; i++)
+                    newGroups[i] = graph.levelGroups[i];
+            }
+            if (newGroups[0] == null) newGroups[0] = graph.rectTrans;
+            for (var i = 1; i < 4; i++)
+            {
+                if (newGroups[i] == null)
+                {
+                    var childName = $"LevelGroup_{i}";
+                    var existing = graph.rectTrans != null ? graph.rectTrans.Find(childName) : null;
+                    if (existing != null)
+                    {
+                        newGroups[i] = existing.GetComponent<RectTransform>();
+                    }
+                    else if (graph.rectTrans != null)
+                    {
+                        var go = new GameObject(childName, typeof(RectTransform));
+                        var rt = go.GetComponent<RectTransform>();
+                        rt.SetParent(graph.rectTrans, false);
+                        rt.anchorMin = Vector2.zero;
+                        rt.anchorMax = Vector2.one;
+                        rt.offsetMin = Vector2.zero;
+                        rt.offsetMax = Vector2.zero;
+                        rt.localScale = i == 1 ? new Vector3(0.82f, 0.82f, 1f) : Vector3.one;
+                        newGroups[i] = rt;
+                    }
+                }
+            }
+            graph.levelGroups = newGroups;
+        }
+
+        // 5. Ensure levelSprites has at least 4 elements
+        if (graph.levelSprites == null || graph.levelSprites.Length < 4)
+        {
+            var newSprites = new Sprite[4];
+            var baseSprite = (graph.levelSprites != null && graph.levelSprites.Length > 0) ? graph.levelSprites[0] : null;
+            if (graph.levelSprites != null)
+            {
+                for (var i = 0; i < graph.levelSprites.Length && i < 4; i++)
+                    newSprites[i] = graph.levelSprites[i];
+            }
+            for (var i = 0; i < 4; i++)
+            {
+                if (newSprites[i] == null) newSprites[i] = baseSprite;
+            }
+            graph.levelSprites = newSprites;
+        }
+
+        // 6. Clamp coreFanIndex, grayFanIndex, hoveredFanIndex
+        if (graph.coreFanIndex >= graph.fanCount) graph.coreFanIndex = -1;
+        if (graph.grayFanIndex >= graph.fanCount) graph.grayFanIndex = -1;
+        if (graph.hoveredFanIndex >= graph.fanCount) graph.hoveredFanIndex = -1;
+
+        // 7. Sanitize fanDatas
+        if (graph.fanDatas != null)
+        {
+            var maxLvl = Math.Max(0, (graph.levelRanges.Length / 2) - 1);
+            var maxCol = Math.Max(0, graph.colors.Length - 1);
+            for (var i = 0; i < graph.fanCount && i < graph.fanDatas.Length; i++)
+            {
+                if (graph.fanDatas[i].index < 0 || graph.fanDatas[i].index > maxCol)
+                    graph.fanDatas[i].index = 0;
+                if (graph.fanDatas[i].level < 0 || graph.fanDatas[i].level > maxLvl)
+                    graph.fanDatas[i].level = 0;
+                graph.fanDatas[i].parent = -1;
+            }
+        }
     }
 
     private static void UpdateSectorGraph(UISectorGraph graph, List<SliceInfo> slices)
     {
         if (graph == null) return;
 
-        // Ensure palette has both cyan and orange
-        if (graph.colors == null || graph.colors.Length == 0)
-        {
-            graph.colors = new[] { CyanColor, OrangeColor };
-        }
-        else if (graph.colors.Length == 1)
-        {
-            var c0 = graph.colors[0];
-            var c1 = c0.r > c0.b ? CyanColor : OrangeColor;
-            graph.colors = new[] { c0, c1 };
-        }
-
-        // Ensure tmp_sum has capacity for multi-level calculations
-        if (graph.tmp_sum == null || graph.tmp_sum.Length < 4)
-        {
-            graph.tmp_sum = new double[4];
-        }
+        SanitizeSectorGraphState(graph);
 
         var count = slices != null ? slices.Count : 0;
 
@@ -376,14 +500,12 @@ internal class UIStatisticsPowerDetailPanel_Patch
             graph.fans = newFans;
         }
 
-        var maxLevel = Math.Max(0, (graph.levelGroups?.Length ?? 1) - 1);
-
         // Populate FanDatas
         for (var i = 0; i < count; i++)
         {
             var slice = slices[i];
-            var colorIdx = GetColorIndex(graph, slice.isOrange);
-            var level = Math.Max(0, Math.Min(slice.level, maxLevel));
+            var colorIdx = (slice.isOrange ? 16 : 0) + (i % 8);
+            if (colorIdx >= graph.colors.Length) colorIdx = 0;
 
             graph.fanDatas[i].index = colorIdx;
             graph.fanDatas[i].name = slice.name;
@@ -391,17 +513,22 @@ internal class UIStatisticsPowerDetailPanel_Patch
             graph.fanDatas[i].fill = slice.fill;
             graph.fanDatas[i].offset = slice.offset;
             graph.fanDatas[i].cursor = slice.offset + slice.fill * 0.5;
-            graph.fanDatas[i].level = level;
-            graph.fanDatas[i].parent = slice.parent;
+            graph.fanDatas[i].level = Math.Max(0, Math.Min(slice.level, 3));
+            graph.fanDatas[i].parent = -1;
         }
 
         graph.fanCount = count;
+        graph.coreFanIndex = -1;
+        graph.grayFanIndex = -1;
+        graph.hoveredFanIndex = -1;
+
+        const double GAP = 0.0018; // Clean visible separation gap between slices
 
         // Ensure fans are instantiated, correctly parented, and configured
         for (var i = 0; i < count; i++)
         {
             var slice = slices[i];
-            var level = Math.Max(0, Math.Min(slice.level, maxLevel));
+            var level = Math.Max(0, Math.Min(slice.level, 3));
 
             var parent = (graph.levelGroups != null && level < graph.levelGroups.Length && graph.levelGroups[level] != null)
                 ? graph.levelGroups[level]
@@ -433,11 +560,19 @@ internal class UIStatisticsPowerDetailPanel_Patch
                     img.fillMethod = Image.FillMethod.Radial360;
                     img.fillOrigin = (int)Image.Origin360.Top;
                     img.fillClockwise = true;
-                    img.fillAmount = (float)slice.fill;
 
-                    var colorIdx = GetColorIndex(graph, slice.isOrange);
-                    img.color = graph.colors[colorIdx];
-                    img.rectTransform.localEulerAngles = new Vector3(0f, 0f, (float)(-slice.offset * 360.0));
+                    // Subtle separation gap between adjacent slices (only when multiple slices)
+                    var hasGap = count > 1 && slice.fill > (GAP * 2.2) && slice.fill < 0.999;
+                    var fillAmt = hasGap ? (slice.fill - GAP) : slice.fill;
+                    var offsetAmt = hasGap ? (slice.offset + GAP * 0.5) : slice.offset;
+
+                    img.fillAmount = (float)Math.Max(0.0005, fillAmt);
+
+                    var color = slice.isOrange
+                        ? OrangePalette[i % OrangePalette.Length]
+                        : CyanPalette[i % CyanPalette.Length];
+                    img.color = color;
+                    img.rectTransform.localEulerAngles = new Vector3(0f, 0f, (float)(-offsetAmt * 360.0));
                 }
 
                 fan.gameObject.SetActive(slice.fill > 0.0001);
